@@ -1,0 +1,73 @@
+# ===========================
+# Node.js
+# ===========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+pnpm-lock.yaml
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+debug.log
+error.log
+
+# Build / Output
+dist/
+build/
+tmp/
+temp/
+
+# Coverage / Testing
+coverage/
+*.lcov
+
+# System files
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# OS trash / temp files
+.Trashes
+*.swp
+*.swo
+~*
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+
+# ===========================
+# Web Project
+# ===========================
+# Ignore generated assets cache
+*.gz
+*.br
+
+# Ignore compiled scripts (if bundling later)
+public/js/bundle.js
+public/js/bundle.js.map
+
+# ===========================
+# Images / Assets (optional)
+# Uncomment if you DON'T want to push assets
+# /assets/
+# *.png
+# *.jpg
+# *.jpeg
+# *.gif
+# *.webp
+# *.mp3
+# *.wav
+# *.ogg

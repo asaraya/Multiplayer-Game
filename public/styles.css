@@ -1,0 +1,9 @@
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+background-color: black;
+  background-size: cover;        /* La imagen cubre toda la pantalla */
+  background-position: center;
+  background-repeat: no-repeat;
+}
