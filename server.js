@@ -3,7 +3,6 @@ const app = express();
 const port = 3000;
 
 const http = require('http');
-const { set } = require('mongoose');
 const server = http.createServer(app);
 const  { Server } = require("socket.io");
 const io = new Server(server, {pingInterval: 2000, pingTimeout: 5000});
@@ -24,10 +23,18 @@ io.on('connection', (socket) => {
     y: 400 * Math.random(),
     color : `hsl(${360 * Math.random()}, 100%, 50%)`,
     lifes : 30,
-    bullets : 0,
+    bullets : 10,
+    sequence : 0
   };
 
   io.emit('playersUpdate', players);
+
+  socket.on('updateBullets', (bullets) => {
+    if (players[socket.id]) {
+      players[socket.id].bullets = bullets;
+      io.emit('playersUpdate', players);
+    }
+  });
 
   socket.on('disconnect', () => {
     console.log('user disconnected');
@@ -35,12 +42,13 @@ io.on('connection', (socket) => {
     io.emit('playersUpdate', players);
   });
 
-  socket.on('move', (direction) => {
+  socket.on('move', ({key, sequence}) => {
+    players[socket.id].sequence = sequence;
     const speed = 5;
-    if (direction === 'ArrowUp') players[socket.id].y -= speed;
-    if (direction === 'ArrowDown') players[socket.id].y += speed;
-    if (direction === 'ArrowLeft') players[socket.id].x -= speed;
-    if (direction === 'ArrowRight') players[socket.id].x += speed;
+    if (key === 'ArrowUp') players[socket.id].y -= speed;
+    if (key === 'ArrowDown') players[socket.id].y += speed;
+    if (key === 'ArrowLeft') players[socket.id].x -= speed;
+    if (key === 'ArrowRight') players[socket.id].x += speed;
   });
 
   console.log('Current players:', players);
@@ -49,7 +57,7 @@ io.on('connection', (socket) => {
 
 setInterval(() => {
   io.emit('playersUpdate', players);
-}, 15); // 15 times per second
+}, 100); // 15 times per second
 
 
 server.listen(port, () => {
