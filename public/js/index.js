@@ -14,7 +14,9 @@ const y = canvas.height / 2;
 
 
 const frontendPlayers = {};
-projectiles = [];
+projectiles = {};
+const powerUps = {};
+
 socket.on('playersUpdate', (backendPlayers) => {
     for (const id in backendPlayers) {
 
@@ -70,6 +72,63 @@ socket.on('playersUpdate', (backendPlayers) => {
     console.log('Frontend players:', frontendPlayers);
 });
 
+
+socket.on('projectilesUpdate', (backendProjectiles) => {
+    for (const id in backendProjectiles) {
+        const p = backendProjectiles[id];
+
+        if (!projectiles[id]) {
+            projectiles[id] = new Projectile({
+                x: p.x,
+                y: p.y,
+                radius: p.radius,
+                color: frontendPlayers[p.playerId] ? frontendPlayers[p.playerId].color : 'white',
+                velocity: p.velocity
+            });
+        } else {
+            projectiles[id].x += p.velocity.x;
+            projectiles[id].y += p.velocity.y;
+        }
+    }
+    for (const id in projectiles) {
+        if (!backendProjectiles[id]) {
+            delete projectiles[id];
+        }
+    }
+});
+
+
+socket.on('powerUpsUpdate', (backendPowerUps) => {
+    for (const id in backendPowerUps) {
+        const p = backendPowerUps[id];
+
+        if (!powerUps[id]) {
+            powerUps[id] = new PowerUp({
+                x: p.x,
+                y: p.y,
+                radius: p.radius,
+                type: p.type
+            });
+        } else {
+            powerUps[id].x = p.x;
+            powerUps[id].y = p.y;
+        }
+    }
+    for (const id in powerUps) {
+        if (!backendPowerUps[id]) {
+            delete powerUps[id];
+        }
+    }
+    
+});
+
+
+socket.on('connect', () => {
+    socket.emit('initCanvas', {width: canvas.width, height: canvas.height, 
+        devicePixelRatio
+    });
+});
+
 let animationId;
 function animate() {
     animationId = requestAnimationFrame(animate);
@@ -81,9 +140,12 @@ function animate() {
         frontendPlayers[id].draw();
     }
 
-    for (let i = projectiles.length -1; i >=0; i--) {
-        const projectile = projectiles[i];
-        projectile.update();
+    for (const id in projectiles) {
+        projectiles[id].draw();
+    }
+
+    for (const id in powerUps) {
+        powerUps[id].draw();
     }
 }
 
