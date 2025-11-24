@@ -29,25 +29,27 @@ socket.on('playersUpdate', (backendPlayers) => {
         
         } else {
             
-            if (id === socket.id){
-                
-               
+            if (id === socket.id) {
+
                 frontendPlayers[id].lifes = p.lifes;
                 frontendPlayers[id].bullets = p.bullets;
-                
-                const lastBackendInput = playersInputs.findIndex(input => {
-                    return input.sequenceNumber === p.sequence;
-                });
-
-                if (lastBackendInput > -1) {
-                    playersInputs.splice(0, lastBackendInput + 1);
+            
+                // Corrección de posición del servidor
+                frontendPlayers[id].x = p.x;
+                frontendPlayers[id].y = p.y;
+            
+                // Remover inputs confirmados
+                const index = playersInputs.findIndex(input => input.sequenceNumber === p.sequence);
+                if (index > -1) {
+                    playersInputs.splice(0, index + 1);
                 }
-
+            
+                // Reaplicar inputs sin confirmar
                 playersInputs.forEach(input => {
                     frontendPlayers[id].x += input.dx;
                     frontendPlayers[id].y += input.dy;
                 });
-            } else {
+            }else {
                 
                 frontendPlayers[id].lifes = p.lifes;
                 frontendPlayers[id].bullets = p.bullets;
@@ -171,29 +173,49 @@ let sequenceNumber = 0;
 setInterval(() => {
     if (keys.ArrowUp.pressed) {
         sequenceNumber++;
-        playersInputs.push({sequenceNumber, dx : 0, dy: -speed});
-        frontendPlayers[socket.id].y -= speed;
-        socket.emit('move', {key: 'ArrowUp', sequence : sequenceNumber});
+        const dx = 0, dy = -speed;
+        playersInputs.push({ sequenceNumber, dx, dy });
+
+        // Predicción inmediata
+        frontendPlayers[socket.id].x += dx;
+        frontendPlayers[socket.id].y += dy;
+
+        socket.emit('move', { dx, dy, sequence: sequenceNumber });
     }
+
     if (keys.ArrowDown.pressed) {
         sequenceNumber++;
-        playersInputs.push({sequenceNumber, dx : 0, dy: speed});
-        frontendPlayers[socket.id].y += speed;
-        socket.emit('move', {key: 'ArrowDown', sequence : sequenceNumber});
+        const dx = 0, dy = speed;
+        playersInputs.push({ sequenceNumber, dx, dy });
+
+        frontendPlayers[socket.id].x += dx;
+        frontendPlayers[socket.id].y += dy;
+
+        socket.emit('move', { dx, dy, sequence: sequenceNumber });
     }
+
     if (keys.ArrowLeft.pressed) {
         sequenceNumber++;
-        playersInputs.push({sequenceNumber, dx : -speed, dy: 0});
-        frontendPlayers[socket.id].x -= speed;
-        socket.emit('move', {key: 'ArrowLeft', sequence : sequenceNumber});
+        const dx = -speed, dy = 0;
+        playersInputs.push({ sequenceNumber, dx, dy });
+
+        frontendPlayers[socket.id].x += dx;
+        frontendPlayers[socket.id].y += dy;
+
+        socket.emit('move', { dx, dy, sequence: sequenceNumber });
     }
+
     if (keys.ArrowRight.pressed) {
         sequenceNumber++;
-        playersInputs.push({sequenceNumber, dx : speed, dy: 0});
-        frontendPlayers[socket.id].x += speed;
-        socket.emit('move', {key: 'ArrowRight', sequence : sequenceNumber});
+        const dx = speed, dy = 0;
+        playersInputs.push({ sequenceNumber, dx, dy });
+
+        frontendPlayers[socket.id].x += dx;
+        frontendPlayers[socket.id].y += dy;
+
+        socket.emit('move', { dx, dy, sequence: sequenceNumber });
     }
-}, 15); // 15 times per second
+}, 15);// 15 times per second
 
 window.addEventListener('keydown', (event) => {
     if (!frontendPlayers[socket.id]) return;

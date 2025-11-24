@@ -46,6 +46,7 @@ io.on('connection', (socket) => {
     x: 400 * Math.random(), 
     y: 400 * Math.random(),
     color : `hsl(${360 * Math.random()}, 100%, 50%)`,
+    radius : 15,
     lifes : 30,
     bullets : 10,
     sequence : 0
@@ -108,14 +109,16 @@ io.on('connection', (socket) => {
     io.emit('playersUpdate', players);
   });
 
-  socket.on('move', ({key, sequence}) => {
-    players[socket.id].sequence = sequence;
-    const speed = 5;
-    if (key === 'ArrowUp') players[socket.id].y -= speed;
-    if (key === 'ArrowDown') players[socket.id].y += speed;
-    if (key === 'ArrowLeft') players[socket.id].x -= speed;
-    if (key === 'ArrowRight') players[socket.id].x += speed;
-  });
+  socket.on('move', ({ dx, dy, sequence }) => {
+    const player = players[socket.id];
+    if (!player) return;
+
+    player.x += dx;
+    player.y += dy;
+
+    // Guardar la última entrada procesada
+    player.sequence = sequence;
+});
 
   console.log('Current players:', players);
 
@@ -156,24 +159,21 @@ setInterval(() => {
 
  
   // Colisiones de jugadores con power-ups
-  for (const pid in players) {
-    const player = players[pid];
-    for (const puid in powerUps) {
-      const powerUp = powerUps[puid];
-      const dx = powerUp.x - player.x;
-      const dy = powerUp.y - player.y;
-      const distance = Math.hypot(dx, dy);
-      
-       if (distance < (powerUp.radius || 10) + (player.radius || 15)) {
-        // Aplicar el efecto del power-up
+  for(const puid in powerUps) {
+    const powerUp = powerUps[puid];
+    for (const pid in players) {
+      const player = players[pid];
+      const distance = Math.hypot(powerUp.x - player.x, powerUp.y - player.y);
+      if (distance < powerUp.radius + player.radius - 10) {
+        // Aplicar efecto del power-up
         if (powerUp.type === 'extraLife') {
-          player.lifes += 1;
+          console.log(player)
+          player.lifes += 5; // Aumenta vidas
         } else if (powerUp.type === 'extraBullets') {
-          player.bullets += 5;
-        } 
-        // Eliminar el power-up recogido
+          player.bullets += 5; // Aumenta balas
+        }
+        // Eliminar el power-up del juego
         delete powerUps[puid];
-        console.log(players);
       }
     }
   }
