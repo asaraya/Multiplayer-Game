@@ -7,3 +7,59 @@ background-color: black;
   background-position: center;
   background-repeat: no-repeat;
 }
+
+#hud {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: #f5f5f5;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 14px;
+  user-select: none;
+  z-index: 10;
+  pointer-events: none;
+  max-width: 220px;
+}
+
+#hud-players {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hud-row {
+  display: grid;
+  grid-template-columns: 16px 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.hud-row.me {
+  border-color: rgba(100, 200, 255, 0.8);
+  box-shadow: 0 0 8px rgba(100, 200, 255, 0.35);
+}
+
+.hud-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.hud-name {
+  color: #e8e8e8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-stat {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #cdd6e5;
+}

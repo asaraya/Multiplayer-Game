@@ -14,9 +14,72 @@ const y = canvas.height / 2;
 
 
 const frontendPlayers = {};
-projectiles = {};
+const projectiles = {};
 const powerUps = {};
 const obstacles = {};
+const walls = {};
+let world = { width: canvas.width, height: canvas.height };
+const hudContainer = document.getElementById('hud-players');
+
+function circleIntersectsRect(px, py, radius, rect) {
+    const closestX = Math.min(Math.max(px, rect.x - rect.width / 2), rect.x + rect.width / 2);
+    const closestY = Math.min(Math.max(py, rect.y - rect.height / 2), rect.y + rect.height / 2);
+    const dx = px - closestX;
+    const dy = py - closestY;
+    return dx * dx + dy * dy < radius * radius;
+}
+
+function renderHud(backendPlayers) {
+    if (!hudContainer) return;
+    hudContainer.innerHTML = '';
+    Object.keys(backendPlayers).forEach((id) => {
+        const p = backendPlayers[id];
+        const row = document.createElement('div');
+        row.className = `hud-row${id === socket.id ? ' me' : ''}`;
+
+        const color = document.createElement('div');
+        color.className = 'hud-color';
+        color.style.background = p.color;
+
+        const name = document.createElement('div');
+        name.className = 'hud-name';
+        name.textContent = id === socket.id ? 'Tu nave' : `P-${id.slice(0, 4)}`;
+
+        const hp = document.createElement('div');
+        hp.className = 'hud-stat';
+        hp.textContent = `HP ${p.lifes}`;
+
+        const ammo = document.createElement('div');
+        ammo.className = 'hud-stat';
+        ammo.textContent = `Ammo ${p.bullets}`;
+
+        row.appendChild(color);
+        row.appendChild(name);
+        row.appendChild(hp);
+        row.appendChild(ammo);
+        hudContainer.appendChild(row);
+    });
+}
+
+function drawNameplates() {
+    context.save();
+    context.font = '12px Segoe UI, sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'bottom';
+    context.fillStyle = '#ffffff';
+    context.strokeStyle = 'rgba(0,0,0,0.6)';
+    context.lineWidth = 3;
+
+    for (const id in frontendPlayers) {
+        const p = frontendPlayers[id];
+        const label = id === socket.id ? 'Tú' : `P-${id.slice(0, 4)}`;
+        const textX = p.x;
+        const textY = p.y - p.radius - 8;
+        context.strokeText(label, textX, textY);
+        context.fillText(label, textX, textY);
+    }
+    context.restore();
+}
 
 
 socket.on('playersUpdate', (backendPlayers) => {
@@ -74,7 +137,21 @@ socket.on('playersUpdate', (backendPlayers) => {
         }
     }
 
-    console.log('Frontend players:', frontendPlayers);
+    renderHud(backendPlayers);
+});
+
+socket.on('mapInit', (map) => {
+    world = map;
+    for (const id in powerUps) {
+        delete powerUps[id];
+    }
+    for (const id in obstacles) {
+        delete obstacles[id];
+    }
+    for (const id in walls) {
+        delete walls[id];
+    }
+    console.log(`Mapa cargado: ${map.name} (seed ${map.seed})`);
 });
 
 
@@ -146,6 +223,25 @@ socket.on('obstaclesUpdate', (backendObstacles) => {
     }
 });
 
+socket.on('wallsUpdate', (backendWalls) => {
+    for (const id in backendWalls) {
+        const w = backendWalls[id];
+        if (!walls[id]) {
+            walls[id] = new Wall(w);
+        } else {
+            walls[id].x = w.x;
+            walls[id].y = w.y;
+            walls[id].width = w.width;
+            walls[id].height = w.height;
+        }
+    }
+    for (const id in walls) {
+        if (!backendWalls[id]) {
+            delete walls[id];
+        }
+    }
+});
+
 socket.on('connect', () => {
     socket.emit('initCanvas', {width: canvas.width, height: canvas.height, 
         devicePixelRatio
@@ -159,9 +255,15 @@ function animate() {
     context.fillRect(0, 0, canvas.width, canvas.height);
 
 
+    for (const id in walls) {
+        walls[id].draw();
+    }
+
     for (const id in frontendPlayers) {
         frontendPlayers[id].draw();
     }
+
+    drawNameplates();
 
     for (const id in projectiles) {
         projectiles[id].draw();
@@ -197,53 +299,44 @@ const playersInputs = [];
 let sequenceNumber = 0;
 setInterval(() => {
 
+    if (!frontendPlayers[socket.id]) return;
+
     if (frontendPlayers[socket.id].frozenUntil > Date.now()) {
         return;
     }
 
-    if (keys.ArrowUp.pressed) {
+    const tryMove = (dx, dy) => {
+        const player = frontendPlayers[socket.id];
+        const nextX = player.x + dx;
+        const nextY = player.y + dy;
+        const hitsWall = Object.values(walls).some((wall) =>
+            circleIntersectsRect(nextX, nextY, player.radius, wall)
+        );
+        if (hitsWall) return;
+
         sequenceNumber++;
-        const dx = 0, dy = -speed;
         playersInputs.push({ sequenceNumber, dx, dy });
 
-        // Predicción inmediata
-        frontendPlayers[socket.id].x += dx;
-        frontendPlayers[socket.id].y += dy;
+        player.x = nextX;
+        player.y = nextY;
 
         socket.emit('move', { dx, dy, sequence: sequenceNumber });
+    };
+
+    if (keys.ArrowUp.pressed) {
+        tryMove(0, -speed);
     }
 
     if (keys.ArrowDown.pressed) {
-        sequenceNumber++;
-        const dx = 0, dy = speed;
-        playersInputs.push({ sequenceNumber, dx, dy });
-
-        frontendPlayers[socket.id].x += dx;
-        frontendPlayers[socket.id].y += dy;
-
-        socket.emit('move', { dx, dy, sequence: sequenceNumber });
+        tryMove(0, speed);
     }
 
     if (keys.ArrowLeft.pressed) {
-        sequenceNumber++;
-        const dx = -speed, dy = 0;
-        playersInputs.push({ sequenceNumber, dx, dy });
-
-        frontendPlayers[socket.id].x += dx;
-        frontendPlayers[socket.id].y += dy;
-
-        socket.emit('move', { dx, dy, sequence: sequenceNumber });
+        tryMove(-speed, 0);
     }
 
     if (keys.ArrowRight.pressed) {
-        sequenceNumber++;
-        const dx = speed, dy = 0;
-        playersInputs.push({ sequenceNumber, dx, dy });
-
-        frontendPlayers[socket.id].x += dx;
-        frontendPlayers[socket.id].y += dy;
-
-        socket.emit('move', { dx, dy, sequence: sequenceNumber });
+        tryMove(speed, 0);
     }
 }, 15);// 15 times per second
 
@@ -282,3 +375,4 @@ window.addEventListener('keyup', (event) => {
             break;
     }
 });
+

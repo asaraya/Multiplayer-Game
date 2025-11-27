@@ -19,62 +19,162 @@ app.get('/', (req, res) => {
 const players = {}
 
 const projectiles = {};
-
-// Modulo de powerUps 
-const powerUps = {};
 let projectileId = 0;
-let powerUpId = 0;
+
+//Tamaño del mapa
+const MAP_WIDTH = 1200;
+const MAP_HEIGHT = 700;
+
 const POWERUP_TYPES = [
   { type: 'extraLife', radius: 5 },
   { type: 'extraBullets', radius: 5 },
 ];
 
-
-function generatePowerUp() {
-  const chosen = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
-
-  return {
-    x: 1200 * Math.random(),
-    y: 700 * Math.random(),
-    radius: chosen.radius,
-    type: chosen.type
-  };
-}
-
-function generateRandomPowerUps() {
-  for (let i = 0; i < 10; i++) {
-    powerUps[powerUpId] = generatePowerUp();
-    powerUpId++;
-  }
-}
-
-generateRandomPowerUps();
-
-// Modulo de Obstaculos
-const obstacles = {};
-let obstacleId = 0;
 const OBSTACLE_TYPES = [
   {type: 'asteroid', radius: 5},
   {type: 'alien' , radius: 5},
   {type: 'slowTrap', radius: 5}
 ];
 
-function generateObstacle() {
-  const chosen = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+// Variantes de mapa, se pueden poner más si se quiere
+const MAP_VARIANTS = [
+  { name: 'Cinturon de asteroides', powerUps: 8,  obstacles: 14, walls: 4 },
+  { name: 'Anillo helado',          powerUps: 10, obstacles: 10, walls: 5 },
+  { name: 'Ruinas alien',           powerUps: 12, obstacles: 12, walls: 6 },
+];
 
-  return {
-    x: 1200 * Math.random(),
-    y: 700 * Math.random(),
-    radius: chosen.radius,
-    type: chosen.type
+function mulberry32(seed) {
+  return function() {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
 
-function generateRandomObstacles() {
-  for (let i = 0; i < 10; i++) {
-    obstacles[obstacleId] = generateObstacle();
-    obstacleId++;
+function randomInMap(limit, rand, padding = 40) {
+  const safeLimit = Math.max(limit - padding * 2, 0);
+  return padding + safeLimit * rand();
+}
+
+function randomPointAvoidingWalls(width, height, radius, randFn, wallCollection = null) {
+  let attempts = 0;
+  const availableWalls = wallCollection || (typeof walls !== 'undefined' ? walls : {});
+  while (attempts < 10) {
+    const x = randomInMap(width, randFn);
+    const y = randomInMap(height, randFn);
+    const collides = Object.values(availableWalls || {}).some((wall) =>
+      circleIntersectsRect(x, y, radius, wall)
+    );
+    if (!collides) {
+      return { x, y };
+    }
+    attempts++;
   }
+  return { x: randomInMap(width, randFn), y: randomInMap(height, randFn) };
+}
+
+function createMap(seed = Date.now()) {
+  const rand = mulberry32(seed);
+  const variant = MAP_VARIANTS[Math.floor(rand() * MAP_VARIANTS.length)];
+  const map = {
+    name: variant.name,
+    seed,
+    id: seed,
+    width: MAP_WIDTH,
+    height: MAP_HEIGHT,
+    powerUps: {},
+    obstacles: {},
+    walls: {},
+    nextPowerUpId: 0,
+    nextObstacleId: 0,
+    nextWallId: 0
+  };
+
+  for (let i = 0; i < variant.walls; i++) {
+    const isHorizontal = rand() > 0.5;
+    const length = isHorizontal
+      ? map.width * 0.25 + map.width * 0.15 * rand()
+      : map.height * 0.25 + map.height * 0.15 * rand();
+    const thickness = 30 + 20 * rand();
+    map.walls[map.nextWallId] = {
+      x: randomInMap(map.width, rand),
+      y: randomInMap(map.height, rand),
+      width: isHorizontal ? length : thickness,
+      height: isHorizontal ? thickness : length,
+      type: 'wall'
+    };
+    map.nextWallId++;
+  }
+
+  for (let i = 0; i < variant.powerUps; i++) {
+    const chosen = POWERUP_TYPES[Math.floor(rand() * POWERUP_TYPES.length)];
+    const point = randomPointAvoidingWalls(map.width, map.height, chosen.radius, rand, map.walls);
+    map.powerUps[map.nextPowerUpId] = {
+      x: point.x,
+      y: point.y,
+      radius: chosen.radius,
+      type: chosen.type
+    };
+    map.nextPowerUpId++;
+  }
+
+  for (let i = 0; i < variant.obstacles; i++) {
+    const chosen = OBSTACLE_TYPES[Math.floor(rand() * OBSTACLE_TYPES.length)];
+    const point = randomPointAvoidingWalls(map.width, map.height, chosen.radius, rand, map.walls);
+    map.obstacles[map.nextObstacleId] = {
+      x: point.x,
+      y: point.y,
+      radius: chosen.radius,
+      type: chosen.type
+    };
+    map.nextObstacleId++;
+  }
+
+  return map;
+}
+
+let activeMap = createMap();
+const powerUps = activeMap.powerUps;
+const obstacles = activeMap.obstacles;
+const walls = activeMap.walls;
+
+console.log(`[MAPA] ${activeMap.name} (seed ${activeMap.seed}) ${activeMap.width}x${activeMap.height}`);
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function circleIntersectsRect(px, py, radius, rect) {
+  const closestX = clamp(px, rect.x - rect.width / 2, rect.x + rect.width / 2);
+  const closestY = clamp(py, rect.y - rect.height / 2, rect.y + rect.height / 2);
+  const dx = px - closestX;
+  const dy = py - closestY;
+  return dx * dx + dy * dy < radius * radius;
+}
+
+function spawnObstacle() {
+  const chosen = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+  const point = randomPointAvoidingWalls(activeMap.width, activeMap.height, chosen.radius, Math.random);
+  obstacles[activeMap.nextObstacleId] = {
+    x: point.x,
+    y: point.y,
+    radius: chosen.radius,
+    type: chosen.type
+  };
+  activeMap.nextObstacleId++;
+}
+
+function spawnPowerUp() {
+  const chosen = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+  const point = randomPointAvoidingWalls(activeMap.width, activeMap.height, chosen.radius, Math.random);
+  powerUps[activeMap.nextPowerUpId] = {
+    x: point.x,
+    y: point.y,
+    radius: chosen.radius,
+    type: chosen.type
+  };
+  activeMap.nextPowerUpId++;
 }
 
 // Naves 
@@ -84,9 +184,10 @@ const SHIPS = [
 
 io.on('connection', (socket) => {
   console.log('a user connected');
+  const spawnPoint = randomPointAvoidingWalls(activeMap.width, activeMap.height, 15, Math.random);
   players[socket.id] = { 
-    x: 1200 * Math.random(), 
-    y: 700 * Math.random(),
+    x: spawnPoint.x, 
+    y: spawnPoint.y,
     color : `hsl(${360 * Math.random()}, 100%, 50%)`,
     radius : 15,
     lifes : 30,
@@ -99,14 +200,17 @@ io.on('connection', (socket) => {
 
   io.emit('playersUpdate', players);
 
-  // Inicializar algunos power-ups
-  generateRandomPowerUps();
+  socket.emit('mapInit', {
+    id: activeMap.id,
+    width: activeMap.width,
+    height: activeMap.height,
+    name: activeMap.name,
+    seed: activeMap.seed
+  });
+  
+  socket.emit('wallsUpdate', walls);
   
   socket.emit('powerUpsUpdate', powerUps);
-
-  // Inicializar algunos obstáculos
-  generateRandomObstacles();
-
   socket.emit('obstaclesUpdate', obstacles);
 
 
@@ -167,8 +271,15 @@ io.on('connection', (socket) => {
 
     
 
-    player.x += dx;
-    player.y += dy;
+    const targetX = clamp(player.x + dx, player.radius, activeMap.width - player.radius);
+    const targetY = clamp(player.y + dy, player.radius, activeMap.height - player.radius);
+    const collidesWithWall = Object.values(walls).some(
+      (wall) => circleIntersectsRect(targetX, targetY, player.radius, wall)
+    );
+    if (!collidesWithWall) {
+      player.x = targetX;
+      player.y = targetY;
+    }
 
     // Guardar la última entrada procesada
     player.sequence = sequence;
@@ -184,12 +295,24 @@ setInterval(() => {
     const projectile = projectiles[id];
     projectile.x += projectile.velocity.x;
     projectile.y += projectile.velocity.y;
-    if (projectile.x -5 >= players[projectile.playerId]?.canvas?.width ||
+    if (projectile.x -5 >= activeMap.width ||
         projectile.x +5 <= 0 ||
-        projectile.y -5 >= players[projectile.playerId]?.canvas?.height ||
+        projectile.y -5 >= activeMap.height ||
         projectile.y +5 <= 0) {
           delete projectiles[id];
           continue;
+    }
+
+    let hitWall = false;
+    for (const wid in walls) {
+      if (circleIntersectsRect(projectile.x, projectile.y, projectile.radius, walls[wid])) {
+        delete projectiles[id];
+        hitWall = true;
+        break;
+      }
+    }
+    if (hitWall) {
+      continue;
     }
 
     for (const pid in players) {
@@ -260,8 +383,12 @@ setInterval(() => {
     }
   }
 
+  if (Object.keys(powerUps).length < 5) {
+    spawnPowerUp();
+  }
+
   if (Object.keys(obstacles).length < 5) {
-    generateRandomObstacles();
+    spawnObstacle();
   }
 
   
@@ -276,3 +403,4 @@ setInterval(() => {
 server.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
+
