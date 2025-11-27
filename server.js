@@ -3,6 +3,7 @@ const app = express();
 const port = 3000;
 
 const http = require('http');
+const { type } = require('os');
 const { emit } = require('process');
 const server = http.createServer(app);
 const  { Server } = require("socket.io");
@@ -33,11 +34,47 @@ function generatePowerUp() {
   const chosen = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
 
   return {
-    x: 800 * Math.random(),
-    y: 600 * Math.random(),
+    x: 1200 * Math.random(),
+    y: 700 * Math.random(),
     radius: chosen.radius,
     type: chosen.type
   };
+}
+
+function generateRandomPowerUps() {
+  for (let i = 0; i < 10; i++) {
+    powerUps[powerUpId] = generatePowerUp();
+    powerUpId++;
+  }
+}
+
+generateRandomPowerUps();
+
+// Modulo de Obstaculos
+const obstacles = {};
+let obstacleId = 0;
+const OBSTACLE_TYPES = [
+  {type: 'asteroid', radius: 5},
+  {type: 'alien' , radius: 5},
+  {type: 'slowTrap', radius: 5}
+];
+
+function generateObstacle() {
+  const chosen = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+
+  return {
+    x: 1200 * Math.random(),
+    y: 700 * Math.random(),
+    radius: chosen.radius,
+    type: chosen.type
+  };
+}
+
+function generateRandomObstacles() {
+  for (let i = 0; i < 10; i++) {
+    obstacles[obstacleId] = generateObstacle();
+    obstacleId++;
+  }
 }
 
 // Naves 
@@ -48,26 +85,30 @@ const SHIPS = [
 io.on('connection', (socket) => {
   console.log('a user connected');
   players[socket.id] = { 
-    x: 400 * Math.random(), 
-    y: 400 * Math.random(),
+    x: 1200 * Math.random(), 
+    y: 700 * Math.random(),
     color : `hsl(${360 * Math.random()}, 100%, 50%)`,
     radius : 15,
     lifes : 30,
     bullets : 10,
     sequence : 0,
     ship: SHIPS[Math.floor(Math.random() * SHIPS.length)],
-    angle: 0
+    angle: 0,
+    frozenUntil: 0
   };
 
   io.emit('playersUpdate', players);
 
   // Inicializar algunos power-ups
-  for (let i = 0; i < 10; i++) {
-    powerUps[powerUpId] = generatePowerUp();
-    powerUpId++;
-  }
+  generateRandomPowerUps();
   
   socket.emit('powerUpsUpdate', powerUps);
+
+  // Inicializar algunos obstáculos
+  generateRandomObstacles();
+
+  socket.emit('obstaclesUpdate', obstacles);
+
 
   socket.on('shootProjectile', ({x, y, angle}) => {
     
@@ -123,6 +164,8 @@ io.on('connection', (socket) => {
   socket.on('move', ({ dx, dy, sequence }) => {
     const player = players[socket.id];
     if (!player) return;
+
+    
 
     player.x += dx;
     player.y += dy;
@@ -188,9 +231,43 @@ setInterval(() => {
       }
     }
   }
+
+  // Colisiones de jugadores con obstáculos
+  for (const oid in obstacles) {
+    const obstacle = obstacles[oid];
+    for (const pid in players) {
+      const player = players[pid];
+      const distance = Math.hypot(obstacle.x - player.x, obstacle.y - player.y);
+      if (distance < obstacle.radius + player.radius - 10) {
+         switch (obstacle.type) {
+          case 'asteroid':
+            player.lifes -= 1;
+            break;
+
+          case 'alien':
+            player.lifes -= 2;
+            break;
+
+          case 'slowTrap':
+            if (Date.now() > player.frozenUntil) {
+              player.frozenUntil = Date.now() + 3000; // 3 segundos
+            }
+            break;
+        }
+        // Eliminar el obstáculo del juego
+        delete obstacles[oid];
+      }
+    }
+  }
+
+  if (Object.keys(obstacles).length < 5) {
+    generateRandomObstacles();
+  }
+
   
 
   io.emit('powerUpsUpdate', powerUps);
+  io.emit('obstaclesUpdate', obstacles);
   io.emit('projectilesUpdate', projectiles);
   io.emit('playersUpdate', players);
 }, 15); // 15 times per second

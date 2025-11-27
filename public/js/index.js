@@ -16,6 +16,8 @@ const y = canvas.height / 2;
 const frontendPlayers = {};
 projectiles = {};
 const powerUps = {};
+const obstacles = {};
+
 
 socket.on('playersUpdate', (backendPlayers) => {
     for (const id in backendPlayers) {
@@ -37,6 +39,7 @@ socket.on('playersUpdate', (backendPlayers) => {
                 // Corrección de posición del servidor
                 frontendPlayers[id].x = p.x;
                 frontendPlayers[id].y = p.y;
+                frontendPlayers[id].frozenUntil = p.frozenUntil;
             
                 // Remover inputs confirmados
                 const index = playersInputs.findIndex(input => input.sequenceNumber === p.sequence);
@@ -124,6 +127,24 @@ socket.on('powerUpsUpdate', (backendPowerUps) => {
     
 });
 
+socket.on('obstaclesUpdate', (backendObstacles) => {
+    for (const id in backendObstacles) {
+        const o = backendObstacles[id];
+        if (!obstacles[id]) {
+            obstacles[id] = new Obstacle(
+                 o.x, o.y, o.radius, o.type
+            );
+        } else {
+            obstacles[id].x = o.x;
+            obstacles[id].y = o.y;
+        }
+    }
+    for (const id in obstacles) {
+        if (!backendObstacles[id]) {
+            delete obstacles[id];
+        }
+    }
+});
 
 socket.on('connect', () => {
     socket.emit('initCanvas', {width: canvas.width, height: canvas.height, 
@@ -149,6 +170,10 @@ function animate() {
     for (const id in powerUps) {
         powerUps[id].draw();
     }
+
+    for (const id in obstacles) {
+        obstacles[id].draw();
+    }
 }
 
 animate();
@@ -171,6 +196,11 @@ const speed = 5;
 const playersInputs = [];
 let sequenceNumber = 0;
 setInterval(() => {
+
+    if (frontendPlayers[socket.id].frozenUntil > Date.now()) {
+        return;
+    }
+
     if (keys.ArrowUp.pressed) {
         sequenceNumber++;
         const dx = 0, dy = -speed;
