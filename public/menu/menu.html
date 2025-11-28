@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Battle - Menú Principal</title>
+    <link rel="stylesheet" href="menu.css">
+</head>
+<body>
+    <div class="menu-container">
+        <div class="stars"></div>
+        <div class="menu-content">
+            <h1 class="game-title">SPACE BATTLE</h1>
+            <div class="menu-section" id="main-menu">
+                <div class="input-group">
+                    <label for="player-name">Nombre del Jugador:</label>
+                    <input type="text" id="player-name" placeholder="Ingresa tu nombre" maxlength="15">
+                </div>
+                
+                <div class="menu-buttons">
+                    <button class="menu-btn play-btn" id="play-btn">JUGAR</button>
+                    <button class="menu-btn custom-btn" id="custom-btn">PERSONALIZAR</button>
+                    <button class="menu-btn rank-btn" id="rank-btn">CLASIFICACIONES</button>
+                </div>
+            </div>
+
+            <div class="menu-section hidden" id="customization-menu">
+                <h2>Personalizar Nave</h2>
+                <div class="ship-selection">
+                    <div class="ship-grid" id="ship-grid"></div>
+                </div>
+                <div class="custom-buttons">
+                    <button class="menu-btn back-btn" id="back-custom-btn">VOLVER</button>
+                    <button class="menu-btn confirm-btn" id="confirm-ship-btn">CONFIRMAR</button>
+                </div>
+            </div>
+
+            <div class="menu-section hidden" id="rankings-menu">
+                <h2>Tabla de Clasificación</h2>
+                <div class="rankings-container" id="rankings-container">
+                    <div class="loading">Cargando clasificaciones...</div>
+                </div>
+                <div class="rank-buttons">
+                    <button class="menu-btn back-btn" id="back-rank-btn">VOLVER</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="menu.js"></script>
+</body>
+</html>
