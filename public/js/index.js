@@ -9,8 +9,8 @@ const devicePixelRatio = window.devicePixelRatio || 1;
 canvas.width  = window.innerWidth * devicePixelRatio;
 canvas.height = window.innerHeight * devicePixelRatio;
 
-const x = canvas.width / 2;
-const y = canvas.height / 2;
+//const x = canvas.width / 2;
+//const y = canvas.height / 2;
 
 
 const frontendPlayers = {};
@@ -29,7 +29,7 @@ function circleIntersectsRect(px, py, radius, rect) {
     return dx * dx + dy * dy < radius * radius;
 }
 
-function renderHud(backendPlayers) {
+ function renderHud(backendPlayers) {
     if (!hudContainer) return;
     hudContainer.innerHTML = '';
     Object.keys(backendPlayers).forEach((id) => {
@@ -43,7 +43,8 @@ function renderHud(backendPlayers) {
 
         const name = document.createElement('div');
         name.className = 'hud-name';
-        name.textContent = id === socket.id ? 'Tu nave' : `P-${id.slice(0, 4)}`;
+        // Usar el nombre del servidor en lugar del local
+        name.textContent = p.playerName || `P-${id.slice(0, 4)}`;
 
         const hp = document.createElement('div');
         hp.className = 'hud-stat';
@@ -72,7 +73,8 @@ function drawNameplates() {
 
     for (const id in frontendPlayers) {
         const p = frontendPlayers[id];
-        const label = id === socket.id ? 'Tú' : `P-${id.slice(0, 4)}`;
+        // Usar el nombre del servidor que viene en backendPlayers
+        const label = p.playerName || `P-${id.slice(0, 4)}`;
         const textX = p.x;
         const textY = p.y - p.radius - 8;
         context.strokeText(label, textX, textY);
@@ -82,23 +84,64 @@ function drawNameplates() {
 }
 
 
+// Enviar configuración del jugador al servidor cuando se conecte
+socket.on('connect', () => {
+    // Enviar configuración del canvas
+    socket.emit('initCanvas', {
+        width: canvas.width, 
+        height: canvas.height, 
+        devicePixelRatio
+    });
+    
+    //  Usar sessionStorage
+    const playerConfig = JSON.parse(sessionStorage.getItem('playerConfig') || '{}');
+    if (playerConfig.name && playerConfig.ship) {
+        socket.emit('playerConfig', playerConfig);
+        console.log('Configuración del jugador enviada al servidor:', playerConfig);
+        
+        // Limpiar sessionStorage después de enviar
+        sessionStorage.removeItem('playerConfig');
+    } else {
+        console.warn('No se encontró configuración del jugador en sessionStorage');
+        // Redirigir al menú si no hay configuración
+        window.location.href = 'menu/menu.html';
+    }
+});
+
 socket.on('playersUpdate', (backendPlayers) => {
     for (const id in backendPlayers) {
 
         const p = backendPlayers[id];
 
         if (!frontendPlayers[id]) {
-           
-            frontendPlayers[id] = new Player({x: p.x, y: p.y, radius: 15, 
-                color: p.color, lifes: p.lifes, bullets: p.bullets, ship: p.ship, angle: p.angle});
-        
-        } else {
-            
-            if (id === socket.id) {
 
-                frontendPlayers[id].lifes = p.lifes;
-                frontendPlayers[id].bullets = p.bullets;
+            frontendPlayers[id] = new Player({
+                x: p.x, 
+                y: p.y, 
+                radius: 15, 
+                color: p.color, 
+                lifes: p.lifes, 
+                bullets: p.bullets, 
+                ship: p.ship,
+                angle: p.angle, // Asegurar que el ángulo se pasa
+                playerName: p.playerName
+            });
+        } else {
+            // Actualizar propiedades existentes
+            frontendPlayers[id].lifes = p.lifes;
+            frontendPlayers[id].bullets = p.bullets;
+            frontendPlayers[id].playerName = p.playerName;
             
+            // Actualizar nave si cambió
+            if (frontendPlayers[id].ship !== p.ship) {
+                frontendPlayers[id].ship = p.ship;
+                frontendPlayers[id].image.src = p.ship;
+            }
+
+            // ACTUALIZAR ÁNGULO para TODOS los jugadores
+            frontendPlayers[id].angle = p.angle;
+
+            if (id === socket.id) {
                 // Corrección de posición del servidor
                 frontendPlayers[id].x = p.x;
                 frontendPlayers[id].y = p.y;
@@ -115,18 +158,18 @@ socket.on('playersUpdate', (backendPlayers) => {
                     frontendPlayers[id].x += input.dx;
                     frontendPlayers[id].y += input.dy;
                 });
-            }else {
-                
+            } else {
+                // Interpolación para otros jugadores (incluyendo ángulo)
                 frontendPlayers[id].lifes = p.lifes;
                 frontendPlayers[id].bullets = p.bullets;
 
                 gsap.to(frontendPlayers[id], {
                     x: p.x,
                     y: p.y,
+                    angle: p.angle, // Interpolar ángulo también
                     duration: 0.015,
                     ease: "linear"
-                }
-                )
+                });
             }
 
         }
