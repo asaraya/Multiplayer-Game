@@ -21,6 +21,14 @@ background-color: black;
   max-width: 220px;
 }
 
+.hud-name {
+    color: #e8e8e8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 80px; /* Limitar ancho para nombres largos */
+}
+
 #hud-players {
   display: flex;
   flex-direction: column;
