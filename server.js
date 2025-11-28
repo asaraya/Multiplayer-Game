@@ -1,6 +1,6 @@
 const express = require('express');
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 const http = require('http');
 const { type } = require('os');
@@ -422,7 +422,7 @@ setInterval(() => {
 }, 15); // 15 times per second
 
 
-server.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
+server.listen(port, '0.0.0.0', () => {
+  console.log(`Server is running on port ${port}`);
 });
 
