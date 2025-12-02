@@ -32,6 +32,47 @@ let lobbyState = {
 };
 
 let lobbyUI = null;
+let exitBtn = null;
+
+// Para mostrar mensaje de fin de partida
+let lastGameEnd = null;
+let lastGameEndAt = 0;
+
+function ensureExitButton() {
+  if (exitBtn) return exitBtn;
+
+  const btn = document.createElement('button');
+  btn.id = 'exit-game-btn';
+  btn.textContent = 'Salir de partida';
+  btn.style.position = 'fixed';
+  btn.style.top = '12px';
+  btn.style.right = '12px';
+  btn.style.zIndex = '10000';
+  btn.style.padding = '10px 14px';
+  btn.style.borderRadius = '10px';
+  btn.style.border = '0';
+  btn.style.cursor = 'pointer';
+  btn.style.fontWeight = '800';
+  btn.style.display = 'none';
+
+  btn.addEventListener('click', () => {
+    // le avisamos al server para que declare ganador si corresponde
+    socket.emit('leaveGame', () => {
+      try { socket.disconnect(); } catch (_) {}
+      window.location.href = 'menu/menu.html';
+    });
+  });
+
+  document.body.appendChild(btn);
+  exitBtn = btn;
+  updateExitButton();
+  return btn;
+}
+
+function updateExitButton() {
+  ensureExitButton();
+  exitBtn.style.display = gameStarted ? 'block' : 'none';
+}
 
 function ensureLobbyUI() {
   if (lobbyUI) return lobbyUI;
@@ -53,6 +94,7 @@ function ensureLobbyUI() {
   overlay.style.padding = '24px';
 
   const title = document.createElement('div');
+  title.id = 'lobby-title';
   title.style.fontSize = '22px';
   title.style.fontWeight = '700';
   title.textContent = 'Sala de espera';
@@ -100,7 +142,7 @@ function ensureLobbyUI() {
 
   document.body.appendChild(overlay);
 
-  lobbyUI = { overlay, info, role, hint, startBtn, error };
+  lobbyUI = { overlay, title, info, role, hint, startBtn, error };
   updateLobbyUI();
   return lobbyUI;
 }
@@ -112,28 +154,51 @@ function setLobbyError(msg) {
 
 function updateLobbyUI() {
   const ui = ensureLobbyUI();
+  ensureExitButton();
+  updateExitButton();
 
   // sincronizar isHost también con roomState (por si el host cambia)
   if (lobbyState.hostId) {
     isHost = (lobbyState.hostId === socket.id);
   }
 
-  const roleText = isHost ? 'Sos el anfitrión (host).' : 'Sos invitado.';
-  ui.role.textContent = roleText;
-
   const rid = roomId ? `(${roomId})` : '';
   ui.info.textContent = `Jugadores: ${lobbyState.playerCount}/${lobbyState.maxPlayers} ${rid}`;
 
-  const needs = Math.max(0, lobbyState.minPlayersToStart - lobbyState.playerCount);
-  if (lobbyState.started || gameStarted) {
-    ui.hint.textContent = 'Partida iniciada.';
-  } else if (needs > 0) {
-    ui.hint.textContent = `Esperando ${needs} jugador(es) más para poder iniciar...`;
+  const roleText = isHost ? 'Sos el anfitrión (host).' : 'Sos invitado.';
+  ui.role.textContent = roleText;
+
+  // Si acaba de terminar una partida, mostrar el resultado unos segundos
+  const showEnd = lastGameEnd && (Date.now() - lastGameEndAt) < 8000 && !gameStarted && !lobbyState.started;
+
+  if (showEnd) {
+    ui.title.textContent = 'Partida terminada';
+    if (lastGameEnd.winnerId && lastGameEnd.winnerId === socket.id) {
+      ui.hint.textContent = `🏆 Ganaste.`;
+    } else if (lastGameEnd.winnerName) {
+      ui.hint.textContent = `Ganador: ${lastGameEnd.winnerName}`;
+    } else {
+      ui.hint.textContent = `La partida terminó.`;
+    }
   } else {
-    ui.hint.textContent = 'Listo para iniciar.';
+    ui.title.textContent = 'Sala de espera';
+
+    const needs = Math.max(0, lobbyState.minPlayersToStart - lobbyState.playerCount);
+    if (lobbyState.started || gameStarted) {
+      ui.hint.textContent = 'Partida iniciada.';
+    } else if (needs > 0) {
+      ui.hint.textContent = `Esperando ${needs} jugador(es) más para poder iniciar...`;
+    } else {
+      ui.hint.textContent = 'Listo para iniciar.';
+    }
   }
 
-  const canStart = isHost && !lobbyState.started && !gameStarted && lobbyState.playerCount >= lobbyState.minPlayersToStart;
+  const canStart =
+    isHost &&
+    !lobbyState.started &&
+    !gameStarted &&
+    lobbyState.playerCount >= lobbyState.minPlayersToStart;
+
   ui.startBtn.style.display = canStart ? 'inline-block' : 'none';
 
   // Mostrar/ocultar overlay
@@ -203,36 +268,30 @@ function drawNameplates() {
 }
 
 // ============================
-// CONNECT (ÚNICO, sin duplicado)
+// CONNECT
 // ============================
 socket.on('connect', () => {
-  // Asegurar overlay desde el inicio
   ensureLobbyUI();
+  ensureExitButton();
   updateLobbyUI();
 
-  // Enviar configuración del canvas
   socket.emit('initCanvas', {
     width: canvas.width,
     height: canvas.height,
     devicePixelRatio
   });
 
-  // Usar sessionStorage
   const playerConfig = JSON.parse(sessionStorage.getItem('playerConfig') || '{}');
   if (playerConfig.name && playerConfig.ship) {
     socket.emit('playerConfig', playerConfig);
-    console.log('Configuración del jugador enviada al servidor:', playerConfig);
-
-    // Limpiar sessionStorage después de enviar
     sessionStorage.removeItem('playerConfig');
   } else {
-    console.warn('No se encontró configuración del jugador en sessionStorage');
     window.location.href = 'menu/menu.html';
   }
 });
 
 // ============================
-// EVENTOS DE SALA (NUEVOS)
+// EVENTOS DE SALA
 // ============================
 socket.on('roomInfo', (info) => {
   roomId = info.roomId;
@@ -263,7 +322,29 @@ socket.on('roomState', (state) => {
 socket.on('gameStarted', () => {
   gameStarted = true;
   lobbyState.started = true;
+
+  // limpiar mensaje final anterior
+  lastGameEnd = null;
+  lastGameEndAt = 0;
+
   setLobbyError('');
+  updateLobbyUI();
+});
+
+socket.on('gameEnded', (payload) => {
+  // payload: { roomId, winnerId, winnerName, reason }
+  lastGameEnd = payload || null;
+  lastGameEndAt = Date.now();
+
+  gameStarted = false;
+  lobbyState.started = false;
+
+  // limpiar bullets locales por estética
+  for (const id in projectiles) delete projectiles[id];
+
+  // limpiar inputs pendientes
+  playersInputs.length = 0;
+
   updateLobbyUI();
 });
 
@@ -311,7 +392,6 @@ socket.on('playersUpdate', (backendPlayers) => {
           playersInputs.splice(0, index + 1);
         }
 
-        // Solo reaplicar prediction si el juego empezó (si no, se ve raro)
         if (gameStarted) {
           playersInputs.forEach(input => {
             frontendPlayers[id].x += input.dx;
@@ -346,7 +426,6 @@ socket.on('mapInit', (map) => {
   for (const id in powerUps) delete powerUps[id];
   for (const id in obstacles) delete obstacles[id];
   for (const id in walls) delete walls[id];
-  console.log(`Mapa cargado: ${map.name} (seed ${map.seed})`);
 });
 
 socket.on('projectilesUpdate', (backendProjectiles) => {
@@ -440,19 +519,14 @@ function animate() {
   context.fillRect(0, 0, canvas.width, canvas.height);
 
   for (const id in walls) walls[id].draw();
-
   for (const id in frontendPlayers) frontendPlayers[id].draw();
-
   drawNameplates();
-
   for (const id in projectiles) projectiles[id].draw();
   for (const id in powerUps) powerUps[id].draw();
   for (const id in obstacles) obstacles[id].draw();
 
-  // overlay (si toca)
   updateLobbyUI();
 }
-
 animate();
 
 const keys = {
@@ -501,9 +575,6 @@ setInterval(() => {
 
 window.addEventListener('keydown', (event) => {
   if (!frontendPlayers[socket.id]) return;
-
-  // opcional: mientras no inició, igual podés dejar que presione teclas,
-  // pero no va a mover por el setInterval guard
   switch (event.key) {
     case 'ArrowUp': keys.ArrowUp.pressed = true; break;
     case 'ArrowDown': keys.ArrowDown.pressed = true; break;

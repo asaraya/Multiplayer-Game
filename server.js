@@ -35,6 +35,51 @@ function getRoomStatePayload(room) {
   };
 }
 
+function emitRoomState(room) {
+  io.to(room.id).emit('roomState', getRoomStatePayload(room));
+}
+
+function getWinnerName(room, winnerId) {
+  const p = room.players[winnerId];
+  if (p && p.playerName) return p.playerName;
+  const short = winnerId ? winnerId.slice(0, 4) : '----';
+  return `Jugador-${short}`;
+}
+
+function endGame(room, winnerId, reason = 'last_player') {
+  // ya terminó o no estaba iniciada
+  if (!room.started) return;
+
+  room.started = false;
+
+  // limpiar proyectiles para que no queden balas flotando
+  room.projectiles = {};
+  room.projectileId = 0;
+
+  const payload = {
+    roomId: room.id,
+    winnerId: winnerId || null,
+    winnerName: winnerId ? getWinnerName(room, winnerId) : null,
+    reason,
+  };
+
+  io.to(room.id).emit('gameEnded', payload);
+  io.to(room.id).emit('projectilesUpdate', room.projectiles);
+  emitRoomState(room);
+}
+
+function checkWinCondition(room, reason = 'last_player') {
+  if (!room || !room.started) return;
+
+  const aliveIds = Object.keys(room.players); // vivos = players existentes
+  if (aliveIds.length === 1) {
+    endGame(room, aliveIds[0], reason);
+  } else if (aliveIds.length === 0) {
+    // caso raro: nadie vivo
+    endGame(room, null, 'no_players');
+  }
+}
+
 function createRoom() {
   const id = `room-${nextRoomId++}`;
 
@@ -52,7 +97,7 @@ function createRoom() {
     obstacles: activeMap.obstacles,
     walls: activeMap.walls,
 
-    players: {},       // socketId -> player
+    players: {},       // socketId -> player (vivos)
     projectiles: {},   // projectileId -> projectile
     projectileId: 0,
   };
@@ -72,16 +117,16 @@ function findRoomForNewPlayer() {
   return createRoom();
 }
 
-function emitRoomState(room) {
-  io.to(room.id).emit('roomState', getRoomStatePayload(room));
-}
-
-function removePlayerFromRoom(roomId, socketId) {
+function removePlayerFromRoom(roomId, socketId, reason = 'player_left') {
   const room = rooms[roomId];
   if (!room) return;
 
+  // quitar de la sala
   room.sockets.delete(socketId);
   delete room.players[socketId];
+
+  // si estaba en partida, revisar win condition
+  checkWinCondition(room, reason);
 
   // Reasignar host si el host se fue
   if (room.hostId === socketId) {
@@ -110,9 +155,6 @@ function removePlayerFromRoom(roomId, socketId) {
 }
 
 // =========================================================
-
-const projectiles = {}; // (YA NO SE USA GLOBALMENTE, pero lo dejo para no romper imports)
-let projectileId = 0;  // (YA NO SE USA GLOBALMENTE, pero lo dejo para no romper imports)
 
 //Tamaño del mapa
 const MAP_WIDTH = 1200;
@@ -305,14 +347,13 @@ io.on('connection', (socket) => {
     lifes: 30,
     bullets: 10,
     sequence: 0,
-    ship: "images/spaceship.png", // Valor por defecto
-    playerName: `Jugador-${socket.id.slice(0, 4)}`, // Nombre por defecto
+    ship: "images/spaceship.png",
+    playerName: `Jugador-${socket.id.slice(0, 4)}`,
     angle: 0,
     frozenUntil: 0,
     canvas: null
   };
 
-  // Enviar estado inicial solo a esa sala/jugador
   io.to(room.id).emit('playersUpdate', room.players);
 
   socket.emit('mapInit', {
@@ -328,6 +369,27 @@ io.on('connection', (socket) => {
   socket.emit('obstaclesUpdate', room.obstacles);
 
   // ======================
+  // SALIR DE LA PARTIDA (BOTÓN)
+  // ======================
+  socket.on('leaveGame', (ack) => {
+    const roomId = socket.data.roomId;
+    const r = rooms[roomId];
+
+    // ya no tiene sala
+    if (!roomId || !r) {
+      if (typeof ack === 'function') ack({ ok: true });
+      return;
+    }
+
+    // IMPORTANTÍSIMO: limpiar roomId para que no se ejecute doble en disconnect
+    socket.data.roomId = null;
+
+    socket.leave(roomId);
+    removePlayerFromRoom(roomId, socket.id, 'player_left');
+    if (typeof ack === 'function') ack({ ok: true });
+  });
+
+  // ======================
   // CONFIG DE JUGADOR
   // ======================
   socket.on('playerConfig', (config) => {
@@ -339,7 +401,6 @@ io.on('connection', (socket) => {
       r.players[socket.id].playerName = config.name;
       r.players[socket.id].ship = config.ship;
       console.log(`Jugador ${socket.id} configurado en ${roomId}: ${config.name}, Nave: ${config.ship}`);
-
       io.to(roomId).emit('playersUpdate', r.players);
     }
   });
@@ -416,13 +477,8 @@ io.on('connection', (socket) => {
 
     if (!r.players[socket.id]) return;
 
-    r.players[socket.id].canvas = {
-      width,
-      height
-    };
-
-    r.players[socket.id].radius = 15;
-    if (devicePixelRatio > 1) r.players[socket.id].radius = 2 * 15;
+    r.players[socket.id].canvas = { width, height };
+    r.players[socket.id].radius = (devicePixelRatio > 1) ? 30 : 15;
   });
 
   socket.on("updateAngle", (angle) => {
@@ -440,7 +496,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('user disconnected');
     const roomId = socket.data.roomId;
-    removePlayerFromRoom(roomId, socket.id);
+    if (roomId) removePlayerFromRoom(roomId, socket.id, 'disconnect');
   });
 
   // ======================
@@ -480,6 +536,11 @@ setInterval(() => {
   for (const roomId in rooms) {
     const room = rooms[roomId];
 
+    // si no empezó, igual dejamos updates para que el cliente siga viendo el mundo
+    // (pero NO se generan proyectiles nuevos porque shootProjectile está bloqueado)
+
+    let someoneEliminated = false;
+
     // PROYECTILES
     for (const id in room.projectiles) {
       const projectile = room.projectiles[id];
@@ -514,15 +575,19 @@ setInterval(() => {
         if (distance < projectile.radius + player.radius && projectile.playerId !== pid) {
           player.lifes -= 1;
           delete room.projectiles[id];
-          console.log(`[${roomId}] Player hit:`, player.playerName);
 
           if (player.lifes <= 0) {
-            console.log(`[${roomId}] Player eliminated:`, player.playerName);
             delete room.players[pid];
+            someoneEliminated = true;
           }
           break;
         }
       }
+    }
+
+    // Si hubo eliminación durante partida -> verificar ganador
+    if (someoneEliminated) {
+      checkWinCondition(room, 'elimination');
     }
 
     // POWER-UPS
@@ -535,12 +600,9 @@ setInterval(() => {
         if (distance < powerUp.radius + player.radius - 10) {
           if (powerUp.type === 'extraLife') {
             player.lifes += 5;
-            console.log(`[${roomId}] ${player.playerName} obtuvo +5 vidas`);
           } else if (powerUp.type === 'extraBullets') {
             player.bullets += 5;
-            console.log(`[${roomId}] ${player.playerName} obtuvo +5 balas`);
           }
-
           delete room.powerUps[puid];
           break;
         }
@@ -558,24 +620,31 @@ setInterval(() => {
           switch (obstacle.type) {
             case 'asteroid':
               player.lifes -= 1;
-              console.log(`[${roomId}] ${player.playerName} chocó con asteroide: -1 vida`);
               break;
             case 'alien':
               player.lifes -= 2;
-              console.log(`[${roomId}] ${player.playerName} atacado por alien: -2 vidas`);
               break;
             case 'slowTrap':
               if (Date.now() > player.frozenUntil) {
                 player.frozenUntil = Date.now() + 3000;
-                console.log(`[${roomId}] ${player.playerName} atrapado en slow trap`);
               }
               break;
+          }
+
+          // si muere por obstáculo, también cuenta
+          if (player.lifes <= 0) {
+            delete room.players[pid];
+            someoneEliminated = true;
           }
 
           delete room.obstacles[oid];
           break;
         }
       }
+    }
+
+    if (someoneEliminated) {
+      checkWinCondition(room, 'elimination');
     }
 
     // Respawn
