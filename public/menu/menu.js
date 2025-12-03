@@ -125,7 +125,7 @@ class MenuManager {
         }, 3000);
     }
 
-       handlePlay() {
+    handlePlay() {
         if (!this.validatePlayerInfo()) {
             return;
         }
@@ -153,24 +153,36 @@ class MenuManager {
         this.loadRankings();
     }
 
-    loadRankings() {
-          // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-          // AQUÍ TAMBIÉN TRABAJA ANDRÉS TAMBIÉN
-          // para conectar con el backend real de estadísticas
+    // ================================
+    //   CONEXIÓN REAL CON EL BACKEND
+    // ================================
+    async loadRankings() {
         const container = document.getElementById('rankings-container');
         container.innerHTML = '<div class="loading">Cargando clasificaciones...</div>';
 
-        setTimeout(() => {
-            const mockRankings = [
-                { name: 'AstroPilot', score: 1500 },
-                { name: 'SpaceWarrior', score: 1200 },
-                { name: 'GalaxyHunter', score: 900 },
-                { name: 'CosmicRider', score: 750 },
-                { name: 'StarVoyager', score: 600 }
-            ];
+        try {
+            const response = await fetch('/api/rankings', {
+                method: 'GET'
+            });
 
-            this.displayRankings(mockRankings);
-        }, 1000);
+            if (!response.ok) {
+                throw new Error('Respuesta no OK del servidor');
+            }
+
+            const data = await response.json();
+
+            // Adaptar el formato del backend a lo que usa displayRankings
+            // Backend envía: { playerName, games, wins, kills, deaths, score }
+            const rankings = data.map(item => ({
+                name: item.playerName || item.name || 'Jugador',
+                score: item.score || 0
+            }));
+
+            this.displayRankings(rankings);
+        } catch (error) {
+            console.error('Error cargando rankings:', error);
+            container.innerHTML = '<div class="error-message">No se pudieron cargar las clasificaciones</div>';
+        }
     }
 
     displayRankings(rankings) {

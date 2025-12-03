@@ -16,6 +16,49 @@ app.get('/', (req, res) => {
 });
 
 // =========================================================
+//                ESTADÍSTICAS / RANKINGS
+// =========================================================
+
+// Objeto global para estadísticas en memoria
+// clave: playerName
+const PLAYER_STATS = {};
+
+// Config de puntajes
+const SCORE_CONFIG = {
+  KILL: 100,
+  WIN: 300
+};
+
+function getDisplayNameFromSocketId(socketId) {
+  if (!socketId) return 'Jugador-????';
+  return `Jugador-${socketId.slice(0, 4)}`;
+}
+
+function ensureStatsForPlayer(playerName) {
+  const key = playerName || 'Jugador-????';
+  if (!PLAYER_STATS[key]) {
+    PLAYER_STATS[key] = {
+      playerName: key,
+      games: 0,
+      wins: 0,
+      kills: 0,
+      deaths: 0,
+      score: 0
+    };
+  }
+  return PLAYER_STATS[key];
+}
+
+// Endpoint sencillo para obtener rankings
+app.get('/api/rankings', (req, res) => {
+  const rankings = Object.values(PLAYER_STATS)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 20); // top 20
+
+  res.json(rankings);
+});
+
+// =========================================================
 //                SALAS DINÁMICAS (WAITING ROOMS)
 // =========================================================
 const MAX_PLAYERS_PER_ROOM = 4;
@@ -55,6 +98,17 @@ function endGame(room, winnerId, reason = 'last_player') {
   // limpiar proyectiles para que no queden balas flotando
   room.projectiles = {};
   room.projectileId = 0;
+
+  // Actualizar estadísticas de victoria
+  if (winnerId) {
+    const winner = room.players[winnerId];
+    const rawName = winner && winner.playerName
+      ? winner.playerName
+      : getDisplayNameFromSocketId(winnerId);
+    const winnerStats = ensureStatsForPlayer(rawName);
+    winnerStats.wins += 1;
+    winnerStats.score += SCORE_CONFIG.WIN;
+  }
 
   const payload = {
     roomId: room.id,
@@ -425,6 +479,13 @@ io.on('connection', (socket) => {
 
     if (r.started) return;
 
+    // Registrar partida jugada para todos los jugadores actuales de la sala
+    Object.values(r.players).forEach((player) => {
+      const rawName = player.playerName || getDisplayNameFromSocketId(socket.id);
+      const stats = ensureStatsForPlayer(rawName);
+      stats.games += 1;
+    });
+
     r.started = true;
     io.to(roomId).emit('gameStarted', { roomId });
     emitRoomState(r);
@@ -574,12 +635,30 @@ setInterval(() => {
 
         if (distance < projectile.radius + player.radius && projectile.playerId !== pid) {
           player.lifes -= 1;
-          delete room.projectiles[id];
+
+          // Actualizar estadísticas de KILL y DEATH si corresponde
+          const killer = room.players[projectile.playerId];
+          const killerName = killer && killer.playerName
+            ? killer.playerName
+            : getDisplayNameFromSocketId(projectile.playerId);
+          const victimName = player && player.playerName
+            ? player.playerName
+            : getDisplayNameFromSocketId(pid);
 
           if (player.lifes <= 0) {
+            // killer consigue kill y puntos
+            const killerStats = ensureStatsForPlayer(killerName);
+            killerStats.kills += 1;
+            killerStats.score += SCORE_CONFIG.KILL;
+
+            const victimStats = ensureStatsForPlayer(victimName);
+            victimStats.deaths += 1;
+
             delete room.players[pid];
             someoneEliminated = true;
           }
+
+          delete room.projectiles[id];
           break;
         }
       }
@@ -631,8 +710,14 @@ setInterval(() => {
               break;
           }
 
-          // si muere por obstáculo, también cuenta
+          // si muere por obstáculo, también cuenta la muerte
           if (player.lifes <= 0) {
+            const victimName = player && player.playerName
+              ? player.playerName
+              : getDisplayNameFromSocketId(pid);
+            const victimStats = ensureStatsForPlayer(victimName);
+            victimStats.deaths += 1;
+
             delete room.players[pid];
             someoneEliminated = true;
           }
