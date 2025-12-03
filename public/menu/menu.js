@@ -202,19 +202,6 @@ class MenuManager {
             return;
         }
 
-        // Encabezados opcionales (si tenés CSS para esto mejor)
-        const header = document.createElement('div');
-        header.className = 'ranking-header';
-        header.innerHTML = `
-            <div class="rank-position">#</div>
-            <div class="rank-name">Jugador</div>
-            <div class="rank-score">Puntos</div>
-            <div class="rank-extra">Kills</div>
-            <div class="rank-extra">Wins</div>
-            <div class="rank-extra">Games</div>
-        `;
-        container.appendChild(header);
-
         // TOP
         rankings.forEach((player) => {
             const name = player.playerName || player.name || 'Jugador';
