@@ -420,7 +420,7 @@ io.on('connection', (socket) => {
     color: `hsl(${360 * Math.random()}, 100%, 50%)`,
     radius: 15,
     lifes: 30,
-    bullets: 10,
+    bullets: 300,
     sequence: 0,
     ship: "images/spaceship.png",
     playerName: `Jugador-${socket.id.slice(0, 4)}`,
