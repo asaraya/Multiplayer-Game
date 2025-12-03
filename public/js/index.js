@@ -127,6 +127,25 @@ function ensureLobbyUI() {
     socket.emit('startGame');
   });
 
+  // NUEVO: botón "Volver al menú"
+  const backBtn = document.createElement('button');
+  backBtn.id = 'lobby-back-menu';
+  backBtn.textContent = 'Volver al menú';
+  backBtn.style.padding = '8px 14px';
+  backBtn.style.borderRadius = '10px';
+  backBtn.style.border = '0';
+  backBtn.style.cursor = 'pointer';
+  backBtn.style.fontWeight = '600';
+  backBtn.style.marginTop = '6px';
+  backBtn.style.background = '#444';
+  backBtn.style.color = '#fff';
+  backBtn.addEventListener('click', () => {
+    socket.emit('leaveGame', () => {
+      try { socket.disconnect(); } catch (_) {}
+      window.location.href = 'menu/menu.html';
+    });
+  });
+
   const error = document.createElement('div');
   error.id = 'lobby-error';
   error.style.fontSize = '13px';
@@ -138,14 +157,17 @@ function ensureLobbyUI() {
   overlay.appendChild(role);
   overlay.appendChild(hint);
   overlay.appendChild(startBtn);
+  overlay.appendChild(backBtn); // <- lo agregamos al overlay
   overlay.appendChild(error);
 
   document.body.appendChild(overlay);
 
-  lobbyUI = { overlay, title, info, role, hint, startBtn, error };
+  // guardamos también el backBtn en la UI
+  lobbyUI = { overlay, title, info, role, hint, startBtn, backBtn, error };
   updateLobbyUI();
   return lobbyUI;
 }
+
 
 function setLobbyError(msg) {
   const ui = ensureLobbyUI();
