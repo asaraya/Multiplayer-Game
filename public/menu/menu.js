@@ -213,9 +213,6 @@ class MenuManager {
                 <div class="rank-position">#${player.position || '-'}</div>
                 <div class="rank-name">${name}</div>
                 <div class="rank-score">${player.score || 0} pts</div>
-                <div class="rank-extra">${player.kills || 0}</div>
-                <div class="rank-extra">${player.wins || 0}</div>
-                <div class="rank-extra">${player.games || 0}</div>
             `;
             container.appendChild(rankItem);
         });
