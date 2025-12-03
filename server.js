@@ -49,13 +49,34 @@ function ensureStatsForPlayer(playerName) {
   return PLAYER_STATS[key];
 }
 
-// Endpoint sencillo para obtener rankings
+// Endpoint de rankings mejorado
+// GET /api/rankings?playerName=Nombre
 app.get('/api/rankings', (req, res) => {
-  const rankings = Object.values(PLAYER_STATS)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 20); // top 20
+  const { playerName } = req.query || {};
 
-  res.json(rankings);
+  // Lista completa ordenada por puntaje
+  const allRankings = Object.values(PLAYER_STATS)
+    .sort((a, b) => b.score - a.score);
+
+  const top = allRankings.slice(0, 20); // top 20
+
+  let playerEntry = null;
+  if (playerName) {
+    const idx = allRankings.findIndex(
+      p => p.playerName && p.playerName.toLowerCase() === playerName.toLowerCase()
+    );
+    if (idx !== -1) {
+      playerEntry = {
+        ...allRankings[idx],
+        position: idx + 1
+      };
+    }
+  }
+
+  res.json({
+    top,
+    player: playerEntry
+  });
 });
 
 // =========================================================
