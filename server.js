@@ -79,6 +79,7 @@ app.get('/api/rankings', (req, res) => {
   });
 });
 
+
 // =========================================================
 //                SALAS DINÁMICAS (WAITING ROOMS)
 // =========================================================
@@ -456,7 +457,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // IMPORTANTÍSIMO: limpiar roomId para que no se ejecute doble en disconnect
+    // limpiar roomId para que no se ejecute doble en disconnect
     socket.data.roomId = null;
 
     socket.leave(roomId);
